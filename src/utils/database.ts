@@ -168,6 +168,24 @@ export const INITIAL_ITEMS: VaultItem[] = [
 
 const SQLITE_STORAGE_KEY = 'aman_vault_sqlite_binary';
 
+// Native Tauri IPC bridge helper for Windows desktop app
+async function invokeTauri<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
+  try {
+    if (typeof window !== 'undefined') {
+      const w = window as any;
+      if (w.__TAURI__?.core?.invoke) {
+        return await w.__TAURI__.core.invoke(cmd, args);
+      }
+      if (w.__TAURI_INTERNALS__?.invoke) {
+        return await w.__TAURI_INTERNALS__.invoke(cmd, args);
+      }
+    }
+  } catch (err) {
+    console.warn(`Tauri native invoke [${cmd}] skipped:`, err);
+  }
+  return null;
+}
+
 // Safe SQLite engine loader with WebAssembly magic check and pure JS asm.js fallback
 async function loadSqlEngine(): Promise<SqlJsStatic> {
   // Strategy 1: Attempt WASM by fetching the buffer and strictly validating magic bytes
@@ -224,20 +242,36 @@ export class VaultDatabase {
     try {
       const SQL = await loadSqlEngine();
 
-      // Attempt to load persisted SQLite binary database
-      const persistedBase64 = localStorage.getItem(SQLITE_STORAGE_KEY);
-      if (persistedBase64) {
-        try {
-          const binaryString = atob(persistedBase64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          this.sqlDb = new SQL.Database(bytes);
-        } catch (e) {
-          console.warn('Could not parse persisted SQLite database, creating new one', e);
-          this.sqlDb = new SQL.Database();
+      // 1. Attempt to load native SQLite binary from Windows AppData if running in desktop Tauri
+      let initialBytes: Uint8Array | null = null;
+      try {
+        const nativeBytes = await invokeTauri<number[]>('load_native_sqlite');
+        if (nativeBytes && Array.isArray(nativeBytes) && nativeBytes.length > 0) {
+          initialBytes = new Uint8Array(nativeBytes);
         }
+      } catch (e) {
+        console.warn('Native Tauri SQLite load skipped:', e);
+      }
+
+      // 2. If not desktop Tauri or no file yet, attempt to load persisted SQLite binary database
+      if (!initialBytes) {
+        const persistedBase64 = localStorage.getItem(SQLITE_STORAGE_KEY);
+        if (persistedBase64) {
+          try {
+            const binaryString = atob(persistedBase64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            initialBytes = bytes;
+          } catch (e) {
+            console.warn('Could not parse persisted SQLite database, creating new one', e);
+          }
+        }
+      }
+
+      if (initialBytes) {
+        this.sqlDb = new SQL.Database(initialBytes);
       } else {
         this.sqlDb = new SQL.Database();
       }
@@ -311,11 +345,17 @@ export class VaultDatabase {
     }
   }
 
-  // Persist SQLite binary database
+  // Persist SQLite binary database (both native disk file on Windows Tauri & local storage)
   private persistToDisk(): void {
     if (!this.sqlDb) return;
     try {
       const binary = this.sqlDb.export();
+
+      // If running inside Tauri Desktop Windows app, save directly to native Windows filesystem
+      invokeTauri('save_native_sqlite', { data: Array.from(binary) }).catch((err) => {
+        console.warn('Native Windows SQLite disk save skipped:', err);
+      });
+
       let binaryString = '';
       const len = binary.length;
       const chunkSize = 8192;
