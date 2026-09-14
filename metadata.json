@@ -1,0 +1,6 @@
+{
+  "name": "أمان - خزنة البيانات والكلمات السرية",
+  "description": "تطبيق الخزنة الرقمية المحلية الآمنة لحفظ بيانات المواقع، كلمات المرور، مفاتيح API، وأرقام التراخيص والشهادات مع قفل آمن - تصميم : عبدالله المخلافي 2026",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
