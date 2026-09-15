@@ -48,7 +48,7 @@ jobs:
         with:
           workspaces: src-tauri
 
-            - name: Install frontend dependencies
+      - name: Install frontend dependencies
         run: npm ci
 
       - name: Install Rollup Windows native package
@@ -62,7 +62,7 @@ jobs:
 
       - name: Build frontend
         run: npm run build
-        
+
       - name: Build Tauri Windows application
         run: npm run tauri build
 
