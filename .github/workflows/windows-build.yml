@@ -51,7 +51,7 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-            - name: Install Windows native packages
+      - name: Install Windows native packages
         shell: pwsh
         run: |
           $rollupVersion = node -p "require('./node_modules/rollup/package.json').version"
@@ -59,7 +59,7 @@ jobs:
 
           npm install --no-save `
             "@rollup/rollup-win32-x64-msvc@$rollupVersion" `
-            "lightningcss-win32-x64-msvc@$lightningVersion"Version"
+            "lightningcss-win32-x64-msvc@$lightningVersion"
 
       - name: TypeScript check
         run: npm run lint
