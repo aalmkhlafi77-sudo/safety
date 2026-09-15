@@ -47,6 +47,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          cache-targets: true
 
       - name: Install frontend dependencies
         run: npm ci
@@ -68,6 +69,10 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+      - name: Clean AMAN Rust build artifacts
+        working-directory: src-tauri
+        run: cargo clean -p aman-vault
 
       - name: Build Tauri Windows application
         run: npm run tauri build
