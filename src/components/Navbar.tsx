@@ -1,5 +1,13 @@
 import React from 'react';
-import { Settings, Volume2, VolumeX, Database, Plus, MonitorCheck } from 'lucide-react';
+import {
+  Settings,
+  Volume2,
+  VolumeX,
+  Database,
+  Plus,
+  MonitorCheck,
+  Lock,
+} from 'lucide-react';
 import amanLogo from '../assets/aman-logo.png';
 
 interface NavbarProps {
