@@ -20,6 +20,8 @@ import {
   ChevronsUp,
   History,
   ShieldCheck,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import { VaultItem, Category, AppSettings, AuditLog } from './types';
 import { db } from './utils/database';
@@ -31,6 +33,7 @@ import { Navbar } from './components/Navbar';
 import { ItemCard } from './components/ItemCard';
 import { ItemCompactCard } from './components/ItemCompactCard';
 import { ItemListView } from './components/ItemListView';
+import amanLogo from './assets/aman-logo.png';
 import { ItemDetailModal } from './components/ItemDetailModal';
 import { ItemFormModal } from './components/ItemFormModal';
 import { SettingsModal } from './components/SettingsModal';
@@ -74,6 +77,99 @@ export default function App() {
     setTimeout(() => {
       setToastMessage((current) => (current === msg ? null : current));
     }, 2500);
+  }, []);
+
+  // Speech Recognition for Voice Search
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const recognitionRef = useRef<any>(null);
+
+  const toggleVoiceSearch = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    const SpeechRecognitionClass =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionClass) {
+      showToast('البحث الصوتي ميزة اختيارية وغير مدعومة في البيئة الحالية — استخدم البحث النصي كالمعتاد');
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // ignore
+        }
+      }
+      setIsListening(false);
+      showToast('تم إيقاف الاستماع الصوتي');
+      return;
+    }
+
+    try {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+
+      const recognition = new SpeechRecognitionClass();
+      recognition.lang = 'ar-SA';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        sounds.playKeypadClick();
+        showToast('🎙️ جاري الاستماع... تحدث بالكلمة التي تبحث عنها');
+      };
+
+      recognition.onresult = (event: any) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        const cleanText = transcript.trim();
+        if (cleanText) {
+          setSearchQuery(cleanText);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        setIsListening(false);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          showToast('تم رفض صلاحية الميكروفون — يستمر البحث النصي المعتاد دون مشكلة');
+        } else if (event.error === 'no-speech') {
+          showToast('لم يتم التقاط صوت، يرجى التحدث بوضوح والمحاولة ثانية');
+        } else {
+          showToast('تعذر التعرف على الصوت، يرجى المحاولة لاحقاً');
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.warn('Speech recognition error:', err);
+      setIsListening(false);
+      showToast('تعذر تشغيل الميكروفون للبحث الصوتي');
+    }
+  }, [isListening, showToast]);
+
+  // Clean up speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+    };
   }, []);
 
   // Initialize DB and load settings
@@ -512,6 +608,44 @@ export default function App() {
       {/* Main Vault Dashboard Body (Contained within 100vh with inner scroll) */}
       <main className="relative z-10 flex-1 overflow-y-auto max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-3.5 sm:py-5 space-y-3.5 sm:space-y-4">
         
+        {/* Official AMAN Brand Identity Banner on Home Page */}
+        <div className="p-3 sm:p-4 rounded-2xl glass-panel-elevated border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 shadow-lg">
+          <div className="flex items-center gap-3.5 w-full sm:w-auto">
+            <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-900 border border-slate-700/80 shadow-[0_4px_16px_rgba(0,0,0,0.6)] overflow-hidden shrink-0 flex items-center justify-center group">
+              <img
+                src={amanLogo}
+                alt="شعار أمان Safety الرسمي"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-contain p-1 transform group-hover:scale-105 transition-transform duration-300"
+              />
+              <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-950 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-black text-slate-100 flex items-center gap-2">
+                  <span>خزانة أَمَان</span>
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-950/70 border border-blue-600/40 text-blue-300">
+                    Safety Vault
+                  </span>
+                </h2>
+                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-600/30 text-emerald-300 font-semibold">
+                  خدمات حماية موثوقة ومحلية
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                خزانة الرموز وكلمات المرور • تشفير AES-256 معزول محلياً على جهازك دون خوادم سحابية.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            <div className="px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-300 font-mono flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Offline SQLite • 100% مشفر</span>
+            </div>
+          </div>
+        </div>
+
         {/* Top Summary Metric Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 shrink-0">
           <div className="p-3 sm:p-3.5 rounded-2xl glass-panel-elevated flex items-center justify-between border-slate-800">
@@ -569,25 +703,53 @@ export default function App() {
           {/* Row 1: Search + Favorites + Sort + View Mode */}
           <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
             
-            {/* Search Input */}
+            {/* Search Input with Microphone Voice Recognition */}
             <div className="relative flex-1">
               <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="بحث سريع باسم الموقع، الرابط، اسم المستخدم، مفتاح API، أو رقم الترخيص..."
-                className="w-full pr-10 pl-14 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                placeholder={
+                  isListening
+                    ? '🎙️ جاري الاستماع... تحدث الآن للبحث في الخزنة...'
+                    : 'بحث سريع باسم الموقع، الرابط، اسم المستخدم، مفتاح API، أو رقم الترخيص...'
+                }
+                className={`w-full pr-10 pl-20 py-2 rounded-xl bg-slate-900/90 border text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all ${
+                  isListening
+                    ? 'border-rose-500/80 ring-2 ring-rose-500/30 bg-slate-900 shadow-[0_0_15px_rgba(244,63,94,0.25)]'
+                    : 'border-slate-700/80 focus:border-amber-400 focus:ring-1 focus:ring-amber-400'
+                }`}
               />
-              {searchQuery && (
+              <div className="absolute left-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="text-[11px] text-slate-400 hover:text-slate-200 px-1 py-0.5 rounded cursor-pointer"
+                    title="مسح البحث"
+                  >
+                    مسح
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer"
+                  onClick={toggleVoiceSearch}
+                  title={isListening ? 'إيقاف البحث الصوتي' : 'البحث الصوتي (تحويل الصوت إلى نص)'}
+                  aria-label={isListening ? 'إيقاف البحث الصوتي' : 'البحث الصوتي'}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center ${
+                    isListening
+                      ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/40 animate-pulse ring-2 ring-rose-400/50'
+                      : 'text-slate-400 hover:text-amber-400 hover:bg-slate-800/80'
+                  }`}
                 >
-                  مسح
+                  {isListening ? (
+                    <MicOff className="w-4 h-4 text-white" />
+                  ) : (
+                    <Mic className="w-4 h-4" />
+                  )}
                 </button>
-              )}
+              </div>
             </div>
 
             {/* Quick Filter & View Modes Controls */}
@@ -810,8 +972,13 @@ export default function App() {
         ) : (
           /* Empty Search or Zero Items State */
           <div className="p-8 sm:p-12 rounded-3xl glass-panel-elevated border-slate-800 text-center flex flex-col items-center justify-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500">
-              <FolderOpen className="w-7 h-7" />
+            <div className="w-20 h-20 rounded-2xl bg-slate-900 border border-slate-700/80 p-2 flex items-center justify-center shadow-lg overflow-hidden">
+              <img
+                src={amanLogo}
+                alt="شعار أمان Safety"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-contain"
+              />
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-slate-200">لا توجد عناصر مطابقة في الخزنة</h3>

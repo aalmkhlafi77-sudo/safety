@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Category, AppSettings, VaultItem, AuditLog } from '../types';
 import { sounds } from '../utils/audio';
+import amanLogo from '../assets/aman-logo.png';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -229,14 +230,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
-          <div>
-            <h2 className="text-lg sm:text-xl font-black text-slate-100 flex items-center gap-2">
-              <Shield className="w-5 h-5 text-amber-400" />
-              <span>لوحة التحكم وإعدادات الخزنة</span>
-            </h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              تخصيص الأمان، القفل التلقائي، إدارة التصنيفات، وقاعدة بيانات SQLite
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-slate-900 border border-slate-700/80 p-0.5 overflow-hidden shrink-0 shadow-md">
+              <img
+                src={amanLogo}
+                alt="شعار أمان Safety"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-black text-slate-100 flex items-center gap-2">
+                <span>لوحة التحكم وإعدادات أمان</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-950/60 border border-blue-700/40 text-blue-300 font-mono">
+                  Safety
+                </span>
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                تخصيص الأمان، القفل التلقائي، إدارة التصنيفات، وقاعدة بيانات SQLite
+              </p>
+            </div>
           </div>
           <button
             type="button"
