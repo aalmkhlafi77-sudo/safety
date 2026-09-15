@@ -48,15 +48,21 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Install frontend dependencies
+            - name: Install frontend dependencies
         run: npm ci
+
+      - name: Install Rollup Windows native package
+        shell: pwsh
+        run: |
+          $rollupVersion = node -p "require('./node_modules/rollup/package.json').version"
+          npm install --no-save "@rollup/rollup-win32-x64-msvc@$rollupVersion"
 
       - name: TypeScript check
         run: npm run lint
 
       - name: Build frontend
         run: npm run build
-
+        
       - name: Build Tauri Windows application
         run: npm run tauri build
 
