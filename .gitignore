@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+src-tauri/gen/
+src-tauri/target/
