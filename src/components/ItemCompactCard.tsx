@@ -13,11 +13,13 @@ import {
   Maximize2,
   Key,
   Award,
+  CopyPlus,
 } from 'lucide-react';
 import { VaultItem, Category } from '../types';
 import { sounds } from '../utils/audio';
 import { copySensitiveText, copyPlainText } from '../utils/clipboard';
 import { sanitizeAndOpenUrl } from '../utils/url';
+import { safeString } from '../utils/searchSafety';
 
 interface ItemCompactCardProps {
   item: VaultItem;
@@ -28,6 +30,7 @@ interface ItemCompactCardProps {
   onView: (item: VaultItem) => void;
   onEdit: (item: VaultItem) => void;
   onDelete: (id: string) => void;
+  onDuplicate?: (item: VaultItem) => void;
   onToggleFavorite: (id: string) => void;
   onCopiedToast?: (msg: string) => void;
 }
@@ -41,16 +44,18 @@ export const ItemCompactCard: React.FC<ItemCompactCardProps> = ({
   onView,
   onEdit,
   onDelete,
+  onDuplicate,
   onToggleFavorite,
   onCopiedToast,
 }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  const glowStyle = category?.glowColor
+  const safeGlow = safeString(category?.glowColor);
+  const glowStyle = safeGlow
     ? {
-        boxShadow: `0 2px 14px ${category.glowColor}`,
-        borderColor: `${category.glowColor.replace(/[\d\.]+\)$/, '0.25)')}`,
+        boxShadow: `0 2px 14px ${safeGlow}`,
+        borderColor: `${safeGlow.replace(/[\d\.]+\)$/, '0.25)')}`,
       }
     : {};
 
@@ -144,7 +149,7 @@ export const ItemCompactCard: React.FC<ItemCompactCardProps> = ({
                 className="text-[11px] text-blue-400 hover:text-blue-300 font-mono truncate max-w-xs mt-0.5 flex items-center gap-1 cursor-pointer"
               >
                 <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-                <span className="truncate">{item.url.replace(/^https?:\/\//, '')}</span>
+                <span className="truncate">{safeString(item.url).replace(/^https?:\/\//, '')}</span>
               </div>
             )}
           </div>
@@ -245,6 +250,17 @@ export const ItemCompactCard: React.FC<ItemCompactCardProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {onDuplicate && (
+                <button
+                  type="button"
+                  onClick={() => onDuplicate(item)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+                  title="تكرار كعنصر جديد"
+                >
+                  <CopyPlus className="w-3 h-3 text-emerald-400" />
+                  <span>تكرار</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onEdit(item)}

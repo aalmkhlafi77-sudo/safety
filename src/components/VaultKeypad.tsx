@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Delete, ShieldAlert, KeyRound, RotateCcw, CheckCircle2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { sounds } from '../utils/audio';
 
 interface VaultKeypadProps {
@@ -134,10 +133,10 @@ export const VaultKeypad: React.FC<VaultKeypadProps> = ({ isSetupMode, onSuccess
         </div>
 
         {/* 6 Metallic LED Indicators */}
-        <motion.div
-          animate={isError ? { x: [-8, 8, -6, 6, -3, 3, 0] } : {}}
-          transition={{ duration: 0.35 }}
-          className="flex justify-center items-center gap-2.5 sm:gap-3 py-1 sm:py-2"
+        <div
+          className={`flex justify-center items-center gap-2.5 sm:gap-3 py-1 sm:py-2 transition-transform ${
+            isError ? 'animate-shake' : ''
+          }`}
         >
           {Array.from({ length: 6 }).map((_, index) => {
             const isFilled = index < pin.length;
@@ -150,10 +149,8 @@ export const VaultKeypad: React.FC<VaultKeypadProps> = ({ isSetupMode, onSuccess
                 <div className="absolute bottom-1 left-1 w-1 h-1 rounded-full bg-slate-800" />
 
                 {isFilled ? (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className={`w-3.5 h-3.5 rounded-full ${
+                  <div
+                    className={`w-3.5 h-3.5 rounded-full animate-pop-led transition-all ${
                       isError
                         ? 'bg-rose-500 shadow-[0_0_12px_#f43f5e]'
                         : isSuccess
@@ -167,22 +164,17 @@ export const VaultKeypad: React.FC<VaultKeypadProps> = ({ isSetupMode, onSuccess
               </div>
             );
           })}
-        </motion.div>
+        </div>
 
         {/* Status / Error Message */}
-        <AnimatePresence>
-          {errorMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="mt-1.5 text-center text-xs font-semibold text-rose-400 flex items-center justify-center gap-1.5"
-            >
-              <ShieldAlert className="w-3.5 h-3.5" />
-              <span>{errorMessage}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {errorMessage && (
+          <div
+            className="mt-1.5 text-center text-xs font-semibold text-rose-400 flex items-center justify-center gap-1.5 transition-all animate-shake"
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
       </div>
 
       {/* 3D Tactile Safe Numeric Keypad: STRICTLY LEFT-TO-RIGHT via dir="ltr" */}

@@ -1,28 +1,28 @@
 export interface MultiEntry {
   id: string;
-  label: string;
-  value: string;
+  label?: string | null;
+  value?: string | null;
 }
 
 export interface VaultItem {
   id: string;
   title: string;
-  description: string;
+  description?: string;
   category: string;
   website?: string;
-  url: string;
+  url?: string;
   urls?: MultiEntry[];
-  username: string;
+  username?: string;
   email?: string;
-  password: string;
-  apiKeys: MultiEntry[];
+  password?: string;
+  apiKeys?: MultiEntry[];
   tokens?: MultiEntry[];
   secretKeys?: MultiEntry[];
-  licenseKeys: MultiEntry[];
+  licenseKeys?: MultiEntry[];
   certificates?: MultiEntry[];
-  notes: string;
+  notes?: string;
   secretNotes?: string;
-  isFavorite: boolean;
+  isFavorite?: boolean;
   createdAt: string;
   updatedAt: string;
 }

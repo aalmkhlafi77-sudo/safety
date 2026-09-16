@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "أمان - الخزنة الرقمية المحلية",
         "width": 1280,
         "height": 820,

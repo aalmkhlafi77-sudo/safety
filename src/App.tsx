@@ -24,6 +24,7 @@ import {
   MicOff,
 } from 'lucide-react';
 import { VaultItem, Category, AppSettings, AuditLog } from './types';
+import { matchesSearchQuery, safeLocaleCompareTitle, safeString } from './utils/searchSafety';
 import { db } from './utils/database';
 import { exportVaultToExcel } from './utils/excelExport';
 import { exportSqliteDatabaseFile } from './utils/storage';
@@ -37,6 +38,7 @@ import amanLogo from './assets/aman-logo.png';
 import { ItemDetailModal } from './components/ItemDetailModal';
 import { ItemFormModal } from './components/ItemFormModal';
 import { SettingsModal } from './components/SettingsModal';
+import { FeatureErrorBoundary } from './components/FeatureErrorBoundary';
 
 export default function App() {
   // Authentication & Master PIN state
@@ -58,7 +60,21 @@ export default function App() {
 
   // View Mode: 'cards' | 'compact' | 'list'
   const [viewMode, setViewMode] = useState<'cards' | 'compact' | 'list'>('cards');
-  const [compactForceExpand, setCompactForceExpand] = useState<boolean | null>(null);
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+
+  const toggleItemExpansion = (id: string) => {
+    setExpandedItems((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const expandAllItems = (expand: boolean) => {
+    const newState: Record<string, boolean> = {};
+    (items || []).forEach((it) => {
+      if (it && it.id) {
+        newState[it.id] = expand;
+      }
+    });
+    setExpandedItems(newState);
+  };
 
   // Modals
   const [viewItem, setViewItem] = useState<VaultItem | null>(null);
@@ -271,7 +287,11 @@ export default function App() {
 
   // Inactivity / Auto-Lock Timer listener
   useEffect(() => {
-    if (!isUnlocked || !settings || settings.autoLockMinutes <= 0) return;
+    if (!isUnlocked || !settings) return;
+    const lockMins = Number(settings.autoLockMinutes);
+    if (isNaN(lockMins) || lockMins <= 0) return;
+
+    lastActivityRef.current = Date.now();
 
     const resetActivity = () => {
       lastActivityRef.current = Date.now();
@@ -284,7 +304,7 @@ export default function App() {
 
     const checkInterval = setInterval(() => {
       const idleTimeMs = Date.now() - lastActivityRef.current;
-      const thresholdMs = settings.autoLockMinutes * 60 * 1000;
+      const thresholdMs = lockMins * 60 * 1000;
       if (idleTimeMs >= thresholdMs) {
         handleLock('انتهت مهلة النشاط وتم قفل وتأمين الخزنة تلقائياً');
       }
@@ -297,7 +317,7 @@ export default function App() {
       window.removeEventListener('scroll', resetActivity);
       clearInterval(checkInterval);
     };
-  }, [isUnlocked, settings, handleLock]);
+  }, [isUnlocked, settings?.autoLockMinutes, handleLock]);
 
   // Save Settings
   const handleSaveSettings = async (newSettings: AppSettings) => {
@@ -357,12 +377,13 @@ export default function App() {
 
   // Delete Vault Item
   const handleDeleteItem = async (id: string) => {
-    const itemToDelete = items.find((it) => it.id === id);
+    const safeItems = Array.isArray(items) ? items : [];
+    const itemToDelete = safeItems.find((it) => it && it.id === id);
     if (!window.confirm(`هل أنت متأكد من حذف "${itemToDelete?.title || 'هذا العنصر'}" من الخزنة نهائياً؟`)) {
       return;
     }
     sounds.playKeypadClick();
-    const updated = items.filter((it) => it.id !== id);
+    const updated = safeItems.filter((it) => it && it.id !== id);
     setItems(updated);
     await db.saveItems(updated);
     if (itemToDelete) {
@@ -378,6 +399,7 @@ export default function App() {
   // Duplicate Item
   const handleDuplicateItem = async (itemToDup: VaultItem) => {
     sounds.playKeypadClick();
+    const safeItems = Array.isArray(items) ? items : [];
     const duplicated: VaultItem = {
       ...itemToDup,
       id: Date.now().toString(),
@@ -385,7 +407,7 @@ export default function App() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    const updated = [duplicated, ...items];
+    const updated = [duplicated, ...safeItems];
     setItems(updated);
     await db.saveItems(updated);
     await db.addAuditLog('تكرار عنصر', duplicated.title, 'تم إنشاء نسخة مكررة من السجل');
@@ -396,7 +418,8 @@ export default function App() {
   // Toggle Favorite
   const handleToggleFavorite = async (id: string) => {
     sounds.playKeypadClick();
-    const updated = items.map((it) => (it.id === id ? { ...it, isFavorite: !it.isFavorite } : it));
+    const safeItems = Array.isArray(items) ? items : [];
+    const updated = safeItems.map((it) => (it && it.id === id ? { ...it, isFavorite: !it.isFavorite } : it));
     setItems(updated);
     await db.saveItems(updated);
   };
@@ -501,25 +524,16 @@ export default function App() {
     showToast('تم مسح سجل العمليات');
   };
 
-  // Filter and Sort Items
+  // Filter and Sort Items (Crash-Proof Search & MultiEntry Filter)
   const filteredItems = useMemo(() => {
-    return items
+    return (items || [])
       .filter((it) => {
-        // Search query filter
-        if (searchQuery.trim()) {
-          const q = searchQuery.toLowerCase();
-          const matchTitle = it.title.toLowerCase().includes(q);
-          const matchDesc = it.description?.toLowerCase().includes(q);
-          const matchUrl = it.url?.toLowerCase().includes(q);
-          const matchUser = it.username?.toLowerCase().includes(q);
-          const matchEmail = it.email?.toLowerCase().includes(q);
-          const matchApi = it.apiKeys?.some(
-            (k) => k.label.toLowerCase().includes(q) || k.value.toLowerCase().includes(q)
-          );
-          const matchLicense = it.licenseKeys?.some(
-            (l) => l.label.toLowerCase().includes(q) || l.value.toLowerCase().includes(q)
-          );
-          if (!matchTitle && !matchDesc && !matchUrl && !matchUser && !matchEmail && !matchApi && !matchLicense) {
+        if (!it) return false;
+
+        // Search query filter with complete null-safety
+        const cleanQuery = safeString(searchQuery).trim();
+        if (cleanQuery) {
+          if (!matchesSearchQuery(it, cleanQuery)) {
             return false;
           }
         }
@@ -537,14 +551,19 @@ export default function App() {
         return true;
       })
       .sort((a, b) => {
+        if (!a || !b) return 0;
         if (sortBy === 'newest') {
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          return dateB - dateA;
         }
         if (sortBy === 'oldest') {
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dateA - dateB;
         }
         if (sortBy === 'title') {
-          return a.title.localeCompare(b.title, 'ar');
+          return safeLocaleCompareTitle(a, b);
         }
         return 0;
       });
@@ -828,7 +847,7 @@ export default function App() {
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setCompactForceExpand(true)}
+                    onClick={() => expandAllItems(true)}
                     className="p-1.5 rounded-lg bg-slate-900 text-slate-300 hover:text-amber-300 text-xs border border-slate-800 cursor-pointer"
                     title="توسيع كافة السجلات"
                   >
@@ -836,7 +855,7 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCompactForceExpand(false)}
+                    onClick={() => expandAllItems(false)}
                     className="p-1.5 rounded-lg bg-slate-900 text-slate-300 hover:text-amber-300 text-xs border border-slate-800 cursor-pointer"
                     title="طي كافة السجلات"
                   >
@@ -900,13 +919,14 @@ export default function App() {
             {viewMode === 'cards' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
                 {filteredItems.map((item) => {
-                  const cat = categories.find((c) => c.id === item.category);
+                  const safeCategories = Array.isArray(categories) ? categories : [];
+                  const cat = safeCategories.find((c) => c && c.id === item.category);
                   return (
                     <ItemCard
                       key={item.id}
                       item={item}
                       category={cat}
-                      clipboardTimeout={settings.clipboardTimeoutSeconds}
+                      clipboardTimeout={settings?.clipboardTimeoutSeconds ?? 30}
                       onView={(it) => setViewItem(it)}
                       onEdit={(it) => {
                         setFormItem(it);
@@ -926,14 +946,16 @@ export default function App() {
             {viewMode === 'compact' && (
               <div className="space-y-2.5 pb-4">
                 {filteredItems.map((item) => {
-                  const cat = categories.find((c) => c.id === item.category);
+                  const safeCategories = Array.isArray(categories) ? categories : [];
+                  const cat = safeCategories.find((c) => c && c.id === item.category);
                   return (
                     <ItemCompactCard
                       key={item.id}
                       item={item}
                       category={cat}
-                      clipboardTimeout={settings.clipboardTimeoutSeconds}
-                      forceExpand={compactForceExpand}
+                      clipboardTimeout={settings?.clipboardTimeoutSeconds ?? 30}
+                      isExpanded={Boolean(expandedItems[item.id])}
+                      onToggleExpand={() => toggleItemExpansion(item.id)}
                       onView={(it) => setViewItem(it)}
                       onEdit={(it) => {
                         setFormItem(it);
@@ -954,8 +976,7 @@ export default function App() {
               <div className="pb-4">
                 <ItemListView
                   items={filteredItems}
-                  categories={categories}
-                  clipboardTimeout={settings.clipboardTimeoutSeconds}
+                  categories={Array.isArray(categories) ? categories : []}
                   onView={(it) => setViewItem(it)}
                   onEdit={(it) => {
                     setFormItem(it);
@@ -964,7 +985,6 @@ export default function App() {
                   onDelete={handleDeleteItem}
                   onDuplicate={handleDuplicateItem}
                   onToggleFavorite={handleToggleFavorite}
-                  onCopiedToast={showToast}
                 />
               </div>
             )}
@@ -1024,53 +1044,77 @@ export default function App() {
       {/* MODALS */}
 
       {/* 1. Item Detail Inspection Modal */}
-      <ItemDetailModal
-        item={viewItem}
-        category={categories.find((c) => c.id === viewItem?.category)}
-        clipboardTimeout={settings.clipboardTimeoutSeconds}
-        onClose={() => setViewItem(null)}
-        onEdit={(it) => {
-          setViewItem(null);
-          setFormItem(it);
-          setIsFormOpen(true);
-        }}
-        onDelete={handleDeleteItem}
-        onDuplicate={handleDuplicateItem}
-        onCopiedToast={showToast}
-      />
+      {viewItem && (
+        <FeatureErrorBoundary featureName="تفاصيل العنصر" onDismiss={() => setViewItem(null)}>
+          <ItemDetailModal
+            item={viewItem}
+            category={(Array.isArray(categories) ? categories : []).find((c) => c && c.id === viewItem?.category)}
+            clipboardTimeout={settings?.clipboardTimeoutSeconds ?? 30}
+            onClose={() => setViewItem(null)}
+            onEdit={(it) => {
+              setViewItem(null);
+              setFormItem(it);
+              setIsFormOpen(true);
+            }}
+            onDelete={handleDeleteItem}
+            onDuplicate={handleDuplicateItem}
+            onCopiedToast={showToast}
+          />
+        </FeatureErrorBoundary>
+      )}
 
       {/* 2. Add / Edit Modal */}
-      <ItemFormModal
-        isOpen={isFormOpen}
-        item={formItem}
-        categories={categories}
-        existingItems={items}
-        onClose={() => {
-          setIsFormOpen(false);
-          setFormItem(null);
-        }}
-        onSave={handleSaveItem}
-      />
+      {isFormOpen && (
+        <FeatureErrorBoundary
+          featureName="نموذج السجل"
+          onDismiss={() => {
+            setIsFormOpen(false);
+            setFormItem(null);
+          }}
+        >
+          <ItemFormModal
+            isOpen={isFormOpen}
+            item={formItem}
+            categories={categories}
+            allItems={items}
+            existingItems={items}
+            onClose={() => {
+              setIsFormOpen(false);
+              setFormItem(null);
+            }}
+            onSave={handleSaveItem}
+            onOpenExisting={(it) => {
+              setIsFormOpen(false);
+              setFormItem(null);
+              setViewItem(it);
+            }}
+          />
+        </FeatureErrorBoundary>
+      )}
 
       {/* 3. Settings / Control Panel Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        onSaveSettings={handleSaveSettings}
-        categories={categories}
-        onSaveCategories={handleSaveCategories}
-        items={items}
-        auditLogs={auditLogs}
-        onClearAuditLogs={handleClearAuditLogs}
-        onExportAman={handleExportAman}
-        onImportAman={handleImportAman}
-        onExportExcel={handleExportExcel}
-        onExportSqlite={handleExportSqlite}
-        onGenerate100Items={handleGenerate100Items}
-        onResetDatabase={handleResetDatabase}
-        onChangePin={handleChangePin}
-      />
+      {isSettingsOpen && (
+        <FeatureErrorBoundary featureName="إعدادات الخزنة" onDismiss={() => setIsSettingsOpen(false)}>
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            settings={settings}
+            onSaveSettings={handleSaveSettings}
+            categories={categories}
+            onSaveCategories={handleSaveCategories}
+            items={items}
+            auditLogs={auditLogs}
+            onClearAuditLogs={handleClearAuditLogs}
+            onExportAman={handleExportAman}
+            onImportAman={handleImportAman}
+            onExportExcel={handleExportExcel}
+            onExportSqlite={handleExportSqlite}
+            onGenerate100Items={handleGenerate100Items}
+            onResetDatabase={handleResetDatabase}
+            onChangePin={handleChangePin}
+          />
+        </FeatureErrorBoundary>
+      )}
 
       {/* Toast Notification Alert */}
       {toastMessage && (

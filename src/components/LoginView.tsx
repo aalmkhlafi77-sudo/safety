@@ -1,6 +1,5 @@
 import React from 'react';
 import { Lock, Sparkles, Monitor, Cpu, KeyRound } from 'lucide-react';
-import { motion } from 'motion/react';
 import { VaultKeypad } from './VaultKeypad';
 import { FloatingParticles } from './FloatingParticles';
 import amanLogo from '../assets/aman-logo.png';
@@ -96,11 +95,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
         <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-12 gap-4 lg:gap-6 items-center">
           
           {/* Left Hero Card - Prominent Clear Logo Display */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-            className="hidden md:flex md:col-span-6 flex-col items-center md:items-start text-right"
+          <div
+            className="hidden md:flex md:col-span-6 flex-col items-center md:items-start text-right transition-all duration-500 animate-in fade-in"
           >
             <div className="relative w-full rounded-2xl overflow-hidden border border-slate-700/80 shadow-[0_15px_35px_rgba(0,0,0,0.7)] group bg-slate-900/90">
               {/* Logo Presentation Container with object-contain to prevent any distortion */}
@@ -157,14 +153,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
 
           {/* Right/Main Keypad Card */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="col-span-1 md:col-span-6 flex flex-col items-center justify-center"
+          <div
+            className="col-span-1 md:col-span-6 flex flex-col items-center justify-center transition-all duration-500 animate-in fade-in"
           >
             <div className="w-full max-w-sm rounded-2xl glass-panel-elevated p-4 sm:p-5 relative border border-slate-700/60 shadow-[0_20px_45px_rgba(0,0,0,0.8)]">
               {/* Corner Screws / Vault Rivets */}
@@ -207,7 +200,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 onVerify={handleKeypadVerify}
               />
             </div>
-          </motion.div>
+          </div>
 
         </div>
       </main>

@@ -50,10 +50,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   onSaveSettings,
-  categories,
+  categories = [],
   onSaveCategories,
-  items,
-  auditLogs,
+  items = [],
+  auditLogs = [],
   onClearAuditLogs,
   onExportAman,
   onImportAman,
@@ -63,8 +63,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onResetDatabase,
   onChangePin,
 }) => {
-  if (!isOpen) return null;
-
   // Tabs
   const [tab, setTab] = useState<'security' | 'categories' | 'backup' | 'audit'>('security');
 
@@ -91,6 +89,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // 100 Test items generating state (Requirement 14)
   const [isGenerating, setIsGenerating] = useState(false);
+
+  if (!isOpen) return null;
 
   // Handle PIN Change
   const handleChangeMasterPin = async (e: React.FormEvent) => {

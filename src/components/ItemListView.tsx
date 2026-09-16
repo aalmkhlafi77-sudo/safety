@@ -12,6 +12,7 @@ import {
 import { VaultItem, Category } from '../types';
 import { sounds } from '../utils/audio';
 import { sanitizeAndOpenUrl } from '../utils/url';
+import { safeString } from '../utils/searchSafety';
 
 interface ItemListViewProps {
   items: VaultItem[];
@@ -24,15 +25,19 @@ interface ItemListViewProps {
 }
 
 export const ItemListView: React.FC<ItemListViewProps> = ({
-  items,
-  categories,
+  items = [],
+  categories = [],
   onView,
   onEdit,
   onDelete,
   onDuplicate,
   onToggleFavorite,
 }) => {
-  const getCategory = (catId: string) => categories.find((c) => c.id === catId);
+  const safeCategories = Array.isArray(categories) ? categories : [];
+  const safeItems = Array.isArray(items) ? items : [];
+
+  const getCategory = (catId?: string) =>
+    catId ? safeCategories.find((c) => c && c.id === catId) : undefined;
 
   const handleOpenUrl = (url?: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -61,7 +66,8 @@ export const ItemListView: React.FC<ItemListViewProps> = ({
 
           {/* Table Body */}
           <tbody className="divide-y divide-slate-800/60 font-medium">
-            {items.map((item) => {
+            {safeItems.map((item) => {
+              if (!item) return null;
               const category = getCategory(item.category);
               const glowStyle = category?.glowColor
                 ? { boxShadow: `inset 4px 0 0 ${category.glowColor}` }
@@ -103,7 +109,7 @@ export const ItemListView: React.FC<ItemListViewProps> = ({
                         >
                           <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                           <span className="truncate max-w-[180px]">
-                            {item.url.replace(/^https?:\/\//, '')}
+                            {safeString(item.url).replace(/^https?:\/\//, '')}
                           </span>
                         </button>
                       )}

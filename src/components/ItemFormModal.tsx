@@ -23,11 +23,13 @@ import {
 } from 'lucide-react';
 import { VaultItem, Category, MultiEntry } from '../types';
 import { sounds } from '../utils/audio';
+import { safeString, safeToLowerCase, safeArray, normalizeMultiEntry, normalizeVaultItem } from '../utils/searchSafety';
 
 interface ItemFormModalProps {
   isOpen: boolean;
   item: VaultItem | null;
-  allItems: VaultItem[];
+  allItems?: VaultItem[];
+  existingItems?: VaultItem[];
   categories: Category[];
   onClose: () => void;
   onSave: (item: VaultItem) => void;
@@ -37,13 +39,19 @@ interface ItemFormModalProps {
 export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   isOpen,
   item,
-  allItems,
-  categories,
+  allItems = [],
+  existingItems = [],
+  categories = [],
   onClose,
   onSave,
   onOpenExisting,
 }) => {
-  if (!isOpen) return null;
+  // Support both allItems and existingItems prop names safely
+  const itemsList = Array.isArray(allItems) && allItems.length > 0
+    ? allItems
+    : Array.isArray(existingItems)
+    ? existingItems
+    : [];
 
   // Basic Information
   const [title, setTitle] = useState('');
@@ -89,30 +97,35 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   // Duplicate warning override
   const [ignoreDuplicateWarning, setIgnoreDuplicateWarning] = useState(false);
 
+  // Derive stable category default without triggering re-runs
+  const defaultCatId = categories && categories.length > 0 ? categories[0].id : 'web';
+  const itemId = item?.id ?? null;
+
   useEffect(() => {
+    if (!isOpen) return;
     if (item) {
-      setTitle(item.title || '');
-      setDescription(item.description || '');
-      setWebsite(item.website || '');
-      setCategory(item.category || (categories[0]?.id ?? 'web'));
-      setIsFavorite(item.isFavorite || false);
-      setUrl(item.url || '');
-      setAdditionalUrls(item.urls || []);
-      setUsername(item.username || '');
-      setEmail(item.email || '');
-      setPassword(item.password || '');
-      setApiKeys(item.apiKeys || []);
-      setTokens(item.tokens || []);
-      setSecretKeys(item.secretKeys || []);
-      setLicenseKeys(item.licenseKeys || []);
-      setCertificates(item.certificates || []);
-      setNotes(item.notes || '');
-      setSecretNotes(item.secretNotes || '');
+      setTitle(safeString(item.title));
+      setDescription(safeString(item.description));
+      setWebsite(safeString(item.website));
+      setCategory(item.category || defaultCatId);
+      setIsFavorite(Boolean(item.isFavorite));
+      setUrl(safeString(item.url));
+      setAdditionalUrls(safeArray(item.urls).map((e, idx) => normalizeMultiEntry(e, `url_${idx}`)));
+      setUsername(safeString(item.username));
+      setEmail(safeString(item.email));
+      setPassword(safeString(item.password));
+      setApiKeys(safeArray(item.apiKeys).map((e, idx) => normalizeMultiEntry(e, `key_${idx}`)));
+      setTokens(safeArray(item.tokens).map((e, idx) => normalizeMultiEntry(e, `tok_${idx}`)));
+      setSecretKeys(safeArray(item.secretKeys).map((e, idx) => normalizeMultiEntry(e, `sec_${idx}`)));
+      setLicenseKeys(safeArray(item.licenseKeys).map((e, idx) => normalizeMultiEntry(e, `lic_${idx}`)));
+      setCertificates(safeArray(item.certificates).map((e, idx) => normalizeMultiEntry(e, `cert_${idx}`)));
+      setNotes(safeString(item.notes));
+      setSecretNotes(safeString(item.secretNotes));
     } else {
       setTitle('');
       setDescription('');
       setWebsite('');
-      setCategory(categories[0]?.id ?? 'web');
+      setCategory(defaultCatId);
       setIsFavorite(false);
       setUrl('');
       setAdditionalUrls([]);
@@ -131,20 +144,49 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
     setFormError('');
     setShowGenerator(false);
     setIgnoreDuplicateWarning(false);
-  }, [item, categories, isOpen]);
+  }, [isOpen, itemId]);
 
-  // Duplicate detector
+  // Duplicate detector (Crash-proof with safe null/undefined handling and min length >= 2)
   const duplicateItem = useMemo(() => {
-    if (item || !title.trim() || ignoreDuplicateWarning) return null;
-    const cleanTitle = title.trim().toLowerCase();
-    const cleanUrl = url.trim().toLowerCase();
+    const rawTitle = safeString(title).trim();
+    const rawUrl = safeString(url).trim();
 
-    return allItems.find((other) => {
-      const matchTitle = other.title.toLowerCase() === cleanTitle;
-      const matchUrl = cleanUrl && other.url && other.url.toLowerCase() === cleanUrl;
-      return matchTitle || matchUrl;
-    });
-  }, [title, url, allItems, item, ignoreDuplicateWarning]);
+    if (!isOpen || item || !rawTitle || rawTitle.length < 2 || ignoreDuplicateWarning) return null;
+    const cleanTitle = rawTitle.toLowerCase();
+    const cleanUrl = rawUrl.toLowerCase();
+
+    try {
+      return (itemsList || []).find((other) => {
+        if (!other || typeof other !== 'object') return false;
+        const otherTitle = safeToLowerCase(other.title).trim();
+        const matchTitle = otherTitle.length > 0 && otherTitle === cleanTitle;
+        const otherUrl = safeToLowerCase(other.url).trim();
+        const matchUrl = Boolean(cleanUrl && otherUrl && otherUrl === cleanUrl);
+        return Boolean(matchTitle || matchUrl);
+      }) || null;
+    } catch {
+      return null;
+    }
+  }, [isOpen, title, url, itemsList, item, ignoreDuplicateWarning]);
+
+  // Password strength calculator (Unconditional Hook)
+  const passwordStrength = useMemo(() => {
+    const pwd = safeString(password);
+    if (!pwd) return { label: 'فارغة', score: 0, color: 'bg-slate-700' };
+    let score = 0;
+    if (pwd.length >= 8) score++;
+    if (pwd.length >= 14) score++;
+    if (/[A-Z]/.test(pwd)) score++;
+    if (/[0-9]/.test(pwd)) score++;
+    if (/[^A-Za-z0-9]/.test(pwd)) score++;
+
+    if (score <= 2) return { label: 'ضعيفة', score, color: 'bg-rose-500' };
+    if (score <= 3) return { label: 'متوسطة', score, color: 'bg-amber-500' };
+    if (score <= 4) return { label: 'قوية', score, color: 'bg-emerald-500' };
+    return { label: 'خارقة للأمان', score, color: 'bg-emerald-400' };
+  }, [password]);
+
+  if (!isOpen) return null;
 
   // Advanced Password Generator
   const generateCustomPassword = () => {
@@ -171,22 +213,6 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
     }
     setPassword(result);
   };
-
-  // Password strength calculator
-  const passwordStrength = useMemo(() => {
-    if (!password) return { label: 'فارغة', score: 0, color: 'bg-slate-700' };
-    let score = 0;
-    if (password.length >= 8) score++;
-    if (password.length >= 14) score++;
-    if (/[A-Z]/.test(password)) score++;
-    if (/[0-9]/.test(password)) score++;
-    if (/[^A-Za-z0-9]/.test(password)) score++;
-
-    if (score <= 2) return { label: 'ضعيفة', score, color: 'bg-rose-500' };
-    if (score <= 3) return { label: 'متوسطة', score, color: 'bg-amber-500' };
-    if (score <= 4) return { label: 'قوية', score, color: 'bg-emerald-500' };
-    return { label: 'خارقة للأمان', score, color: 'bg-emerald-400' };
-  }, [password]);
 
   // Handlers for dynamic array items
   const addMultiEntry = (
@@ -216,9 +242,12 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) {
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
+    const cleanTitle = safeString(title).trim();
+    if (!cleanTitle) {
       setFormError('يرجى كتابة اسم الموقع أو العنصر أولاً');
       setActiveTab('basic');
       return;
@@ -230,34 +259,50 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
 
     sounds.playUnlock();
 
+    const cleanField = (s: unknown) => safeString(s).trim();
+    const cleanList = (list: unknown) => {
+      if (!Array.isArray(list)) return [];
+      return list
+        .filter((entry) => entry && (cleanField(entry.value) || cleanField(entry.label)))
+        .map((entry) => ({
+          id: cleanField(entry.id) || Date.now().toString(),
+          label: cleanField(entry.label),
+          value: cleanField(entry.value),
+        }));
+    };
+
     const savedItem: VaultItem = {
-      id: item ? item.id : Date.now().toString(),
-      title: title.trim(),
-      description: description.trim(),
-      website: website.trim(),
-      category: category || 'web',
-      isFavorite,
-      url: url.trim(),
-      urls: additionalUrls.filter((u) => u.value.trim()),
-      username: username.trim(),
-      email: email.trim(),
-      password: password.trim(),
-      apiKeys: apiKeys.filter((k) => k.value.trim()),
-      tokens: tokens.filter((t) => t.value.trim()),
-      secretKeys: secretKeys.filter((s) => s.value.trim()),
-      licenseKeys: licenseKeys.filter((l) => l.value.trim()),
-      certificates: certificates.filter((c) => c.value.trim()),
-      notes: notes.trim(),
-      secretNotes: secretNotes.trim(),
-      createdAt: item ? item.createdAt : new Date().toISOString(),
+      id: item?.id ? item.id : Date.now().toString(),
+      title: cleanField(title),
+      description: cleanField(description),
+      website: cleanField(website),
+      category: cleanField(category) || 'web',
+      isFavorite: Boolean(isFavorite),
+      url: cleanField(url),
+      urls: cleanList(additionalUrls),
+      username: cleanField(username),
+      email: cleanField(email),
+      password: cleanField(password),
+      apiKeys: cleanList(apiKeys),
+      tokens: cleanList(tokens),
+      secretKeys: cleanList(secretKeys),
+      licenseKeys: cleanList(licenseKeys),
+      certificates: cleanList(certificates),
+      notes: cleanField(notes),
+      secretNotes: cleanField(secretNotes),
+      createdAt: item?.createdAt ? item.createdAt : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
-    onSave(savedItem);
+    onSave(normalizeVaultItem(savedItem));
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4 overflow-hidden">
+    <div
+      onKeyDown={(e) => e.stopPropagation()}
+      onKeyUp={(e) => e.stopPropagation()}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4 overflow-hidden"
+    >
       <div className="relative w-full max-w-2xl max-h-[92vh] flex flex-col rounded-3xl glass-panel-elevated p-4 sm:p-6 border border-slate-700/80 shadow-[0_25px_60px_rgba(0,0,0,0.85)] text-right animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header Rivets */}
@@ -290,11 +335,11 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
               <span>
-                <strong>تنبيه تكرار:</strong> يوجد عنصر مشابه محفوظ مسبقاً بعنوان: «{duplicateItem.title}».
+                <strong>تنبيه تكرار:</strong> يوجد عنصر مشابه محفوظ مسبقاً بعنوان: «{safeString(duplicateItem.title) || 'عنصر مشابه'}».
               </span>
             </div>
             <div className="flex items-center gap-2">
-              {onOpenExisting && (
+              {typeof onOpenExisting === 'function' && (
                 <button
                   type="button"
                   onClick={() => onOpenExisting(duplicateItem)}
@@ -396,7 +441,15 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
         )}
 
         {/* Form Body - Scrollable content strictly inside */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto mt-3 pr-1 pl-1 space-y-4">
+        <div
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
+          className="flex-1 overflow-y-auto mt-3 pr-1 pl-1 space-y-4"
+        >
           
           {/* TAB 1: BASIC INFORMATION */}
           {activeTab === 'basic' && (
@@ -450,7 +503,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   التصنيف / المصنف
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {categories.map((cat) => (
+                  {(categories || []).map((cat) => (
                     <button
                       key={cat.id}
                       type="button"
@@ -523,18 +576,18 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                     <span>+ إضافة رابط آخر</span>
                   </button>
                 </div>
-                {additionalUrls.map((u) => (
+                {(additionalUrls || []).map((u) => (
                   <div key={u.id} className="flex items-center gap-2 mb-2">
                     <input
                       type="text"
-                      value={u.label}
+                      value={safeString(u.label)}
                       onChange={(e) => updateMultiEntry(setAdditionalUrls, u.id, 'label', e.target.value)}
                       placeholder="تسمية الرابط (لوحة التحكم، الـ API...)"
                       className="w-1/3 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200"
                     />
                     <input
                       type="text"
-                      value={u.value}
+                      value={safeString(u.value)}
                       onChange={(e) => updateMultiEntry(setAdditionalUrls, u.id, 'value', e.target.value)}
                       dir="ltr"
                       placeholder="https://..."
@@ -543,7 +596,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                     <button
                       type="button"
                       onClick={() => removeMultiEntry(setAdditionalUrls, u.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -735,21 +788,21 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   </button>
                 </div>
 
-                {apiKeys.length === 0 ? (
+                {(apiKeys || []).length === 0 ? (
                   <p className="text-[11px] text-slate-500">لا توجد مفاتيح API مسجلة. اضغط + لإضافة مفتاح.</p>
                 ) : (
-                  apiKeys.map((k) => (
+                  (apiKeys || []).map((k) => (
                     <div key={k.id} className="flex items-center gap-2 mb-2">
                       <input
                         type="text"
-                        value={k.label}
+                        value={safeString(k.label)}
                         onChange={(e) => updateMultiEntry(setApiKeys, k.id, 'label', e.target.value)}
                         placeholder="تسمية المفتاح (Live, Test...)"
                         className="w-1/3 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200"
                       />
                       <input
                         type="text"
-                        value={k.value}
+                        value={safeString(k.value)}
                         onChange={(e) => updateMultiEntry(setApiKeys, k.id, 'value', e.target.value)}
                         dir="ltr"
                         placeholder="key_live_..."
@@ -758,7 +811,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                       <button
                         type="button"
                         onClick={() => removeMultiEntry(setApiKeys, k.id)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -784,21 +837,21 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   </button>
                 </div>
 
-                {tokens.length === 0 ? (
+                {(tokens || []).length === 0 ? (
                   <p className="text-[11px] text-slate-500">لا توجد توكنات مسجلة.</p>
                 ) : (
-                  tokens.map((t) => (
+                  (tokens || []).map((t) => (
                     <div key={t.id} className="flex items-center gap-2 mb-2">
                       <input
                         type="text"
-                        value={t.label}
+                        value={safeString(t.label)}
                         onChange={(e) => updateMultiEntry(setTokens, t.id, 'label', e.target.value)}
                         placeholder="اسم التوكن (GitHub Token, OAuth...)"
                         className="w-1/3 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200"
                       />
                       <input
                         type="text"
-                        value={t.value}
+                        value={safeString(t.value)}
                         onChange={(e) => updateMultiEntry(setTokens, t.id, 'value', e.target.value)}
                         dir="ltr"
                         placeholder="ghp_..."
@@ -807,7 +860,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                       <button
                         type="button"
                         onClick={() => removeMultiEntry(setTokens, t.id)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -833,21 +886,21 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   </button>
                 </div>
 
-                {secretKeys.length === 0 ? (
+                {(secretKeys || []).length === 0 ? (
                   <p className="text-[11px] text-slate-500">لا توجد مفاتيح سرية مسجلة.</p>
                 ) : (
-                  secretKeys.map((s) => (
+                  (secretKeys || []).map((s) => (
                     <div key={s.id} className="flex items-center gap-2 mb-2">
                       <input
                         type="text"
-                        value={s.label}
+                        value={safeString(s.label)}
                         onChange={(e) => updateMultiEntry(setSecretKeys, s.id, 'label', e.target.value)}
                         placeholder="تسمية المفتاح (Client Secret, AES Key...)"
                         className="w-1/3 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200"
                       />
                       <input
                         type="text"
-                        value={s.value}
+                        value={safeString(s.value)}
                         onChange={(e) => updateMultiEntry(setSecretKeys, s.id, 'value', e.target.value)}
                         dir="ltr"
                         placeholder="sk_live_..."
@@ -856,7 +909,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                       <button
                         type="button"
                         onClick={() => removeMultiEntry(setSecretKeys, s.id)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -887,21 +940,21 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   </button>
                 </div>
 
-                {licenseKeys.length === 0 ? (
+                {(licenseKeys || []).length === 0 ? (
                   <p className="text-[11px] text-slate-500">لا توجد تراخيص مسجلة.</p>
                 ) : (
-                  licenseKeys.map((l) => (
+                  (licenseKeys || []).map((l) => (
                     <div key={l.id} className="flex items-center gap-2 mb-2">
                       <input
                         type="text"
-                        value={l.label}
+                        value={safeString(l.label)}
                         onChange={(e) => updateMultiEntry(setLicenseKeys, l.id, 'label', e.target.value)}
                         placeholder="البرنامج (Windows Pro, Adobe...)"
                         className="w-1/3 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200"
                       />
                       <input
                         type="text"
-                        value={l.value}
+                        value={safeString(l.value)}
                         onChange={(e) => updateMultiEntry(setLicenseKeys, l.id, 'value', e.target.value)}
                         dir="ltr"
                         placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
@@ -910,7 +963,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                       <button
                         type="button"
                         onClick={() => removeMultiEntry(setLicenseKeys, l.id)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -936,21 +989,21 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   </button>
                 </div>
 
-                {certificates.length === 0 ? (
+                {(certificates || []).length === 0 ? (
                   <p className="text-[11px] text-slate-500">لا توجد شهادات رقمية مسجلة.</p>
                 ) : (
-                  certificates.map((c) => (
+                  (certificates || []).map((c) => (
                     <div key={c.id} className="flex items-center gap-2 mb-2">
                       <input
                         type="text"
-                        value={c.label}
+                        value={safeString(c.label)}
                         onChange={(e) => updateMultiEntry(setCertificates, c.id, 'label', e.target.value)}
                         placeholder="اسم الشهادة (DigiCert SSL...)"
                         className="w-1/3 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200"
                       />
                       <input
                         type="text"
-                        value={c.value}
+                        value={safeString(c.value)}
                         onChange={(e) => updateMultiEntry(setCertificates, c.id, 'value', e.target.value)}
                         dir="ltr"
                         placeholder="رقم أو مرجع الشهادة..."
@@ -959,7 +1012,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                       <button
                         type="button"
                         onClick={() => removeMultiEntry(setCertificates, c.id)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1005,7 +1058,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
             </div>
           )}
 
-        </form>
+        </div>
 
         {/* Footer Actions */}
         <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between gap-3 shrink-0">

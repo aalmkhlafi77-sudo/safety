@@ -20,6 +20,7 @@ import { VaultItem, Category } from '../types';
 import { sounds } from '../utils/audio';
 import { copySensitiveText, copyPlainText } from '../utils/clipboard';
 import { sanitizeAndOpenUrl } from '../utils/url';
+import { safeString } from '../utils/searchSafety';
 
 interface ItemCardProps {
   item: VaultItem;
@@ -48,10 +49,11 @@ export const ItemCard: React.FC<ItemCardProps> = ({
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const glowStyle = category?.glowColor
+  const safeGlow = safeString(category?.glowColor);
+  const glowStyle = safeGlow
     ? {
-        boxShadow: `0 4px 20px ${category.glowColor}`,
-        borderColor: `${category.glowColor.replace(/[\d\.]+\)$/, '0.3)')}`,
+        boxShadow: `0 4px 20px ${safeGlow}`,
+        borderColor: `${safeGlow.replace(/[\d\.]+\)$/, '0.3)')}`,
       }
     : {};
 
@@ -225,7 +227,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
             title="فتح الرابط في متصفح خارجي"
           >
             <ExternalLink className="w-3 h-3 shrink-0" />
-            <span className="font-mono truncate">{item.url.replace(/^https?:\/\//, '')}</span>
+            <span className="font-mono truncate">{safeString(item.url).replace(/^https?:\/\//, '')}</span>
           </div>
         )}
       </div>

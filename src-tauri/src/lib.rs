@@ -17,7 +17,9 @@ fn save_native_sqlite(app: tauri::AppHandle, data: Vec<u8>) -> Result<(), String
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&app_data).map_err(|e| e.to_string())?;
     let db_path = app_data.join("aman_vault.sqlite");
-    fs::write(db_path, data).map_err(|e| e.to_string())?;
+    let temp_path = app_data.join("aman_vault.sqlite.tmp");
+    fs::write(&temp_path, data).map_err(|e| e.to_string())?;
+    fs::rename(&temp_path, &db_path).map_err(|e| e.to_string())?;
     Ok(())
 }
 

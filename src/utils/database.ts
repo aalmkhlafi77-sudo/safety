@@ -2,6 +2,7 @@ import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import initSqlJsAsm from 'sql.js/dist/sql-asm.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { VaultItem, Category, AppSettings, AuditLog, MultiEntry } from '../types';
+import { safeString, normalizeCategory, normalizeVaultItem, normalizeMultiEntry } from './searchSafety';
 import {
   encryptSecret,
   decryptSecret,
@@ -502,18 +503,20 @@ export class VaultDatabase {
     const db = await this.ensureInitialized();
     const res = db.exec('SELECT id, name, icon, color, glowColor, displayOrder, isHidden FROM vault_categories ORDER BY displayOrder ASC;');
     if (!res.length || !res[0].values.length) {
-      return DEFAULT_CATEGORIES;
+      return DEFAULT_CATEGORIES.map(normalizeCategory);
     }
 
-    return res[0].values.map((row) => ({
-      id: row[0] as string,
-      name: row[1] as string,
-      icon: row[2] as string,
-      color: row[3] as string,
-      glowColor: row[4] as string,
-      displayOrder: row[5] as number,
-      isHidden: Boolean(row[6]),
-    }));
+    return res[0].values.map((row) =>
+      normalizeCategory({
+        id: row[0],
+        name: row[1],
+        icon: row[2],
+        color: row[3],
+        glowColor: row[4],
+        displayOrder: row[5],
+        isHidden: Boolean(row[6]),
+      })
+    );
   }
 
   async saveCategories(categories: Category[]): Promise<void> {
@@ -571,7 +574,10 @@ export class VaultDatabase {
 
       let parsedUrls: MultiEntry[] = [];
       try {
-        parsedUrls = JSON.parse(rawUrls);
+        const rawParsed = JSON.parse(rawUrls);
+        if (Array.isArray(rawParsed)) {
+          parsedUrls = rawParsed.map((u, i) => normalizeMultiEntry(u, `url_${i}`));
+        }
       } catch {
         parsedUrls = [];
       }
@@ -587,100 +593,60 @@ export class VaultDatabase {
           ? await decryptSecret(rawSecretNotes, this.activeMasterKey)
           : rawSecretNotes;
 
-        // Decrypt multi-value entries
-        try {
-          const apiList: MultiEntry[] = JSON.parse(rawApiKeys);
-          decApiKeys = await Promise.all(
-            apiList.map(async (k) => ({
-              ...k,
-              value: k.value?.startsWith('ENC:')
-                ? await decryptSecret(k.value, this.activeMasterKey!)
-                : k.value,
-            }))
-          );
-        } catch {
-          decApiKeys = [];
-        }
+        const decryptMultiList = async (rawJson: string, prefix: string): Promise<MultiEntry[]> => {
+          try {
+            const parsed = JSON.parse(rawJson);
+            if (!Array.isArray(parsed)) return [];
+            return await Promise.all(
+              parsed.map(async (entry, idx) => {
+                const norm = normalizeMultiEntry(entry, `${prefix}_${idx}`);
+                const rawVal = norm.value;
+                const decVal = rawVal.startsWith('ENC:')
+                  ? await decryptSecret(rawVal, this.activeMasterKey!)
+                  : rawVal;
+                return {
+                  id: norm.id,
+                  label: norm.label,
+                  value: decVal,
+                };
+              })
+            );
+          } catch {
+            return [];
+          }
+        };
 
-        try {
-          const tokList: MultiEntry[] = JSON.parse(rawTokens);
-          decTokens = await Promise.all(
-            tokList.map(async (t) => ({
-              ...t,
-              value: t.value?.startsWith('ENC:')
-                ? await decryptSecret(t.value, this.activeMasterKey!)
-                : t.value,
-            }))
-          );
-        } catch {
-          decTokens = [];
-        }
-
-        try {
-          const secList: MultiEntry[] = JSON.parse(rawSecretKeys);
-          decSecretKeys = await Promise.all(
-            secList.map(async (s) => ({
-              ...s,
-              value: s.value?.startsWith('ENC:')
-                ? await decryptSecret(s.value, this.activeMasterKey!)
-                : s.value,
-            }))
-          );
-        } catch {
-          decSecretKeys = [];
-        }
-
-        try {
-          const licList: MultiEntry[] = JSON.parse(rawLicenseKeys);
-          decLicenseKeys = await Promise.all(
-            licList.map(async (l) => ({
-              ...l,
-              value: l.value?.startsWith('ENC:')
-                ? await decryptSecret(l.value, this.activeMasterKey!)
-                : l.value,
-            }))
-          );
-        } catch {
-          decLicenseKeys = [];
-        }
-
-        try {
-          const certList: MultiEntry[] = JSON.parse(rawCertificates);
-          decCertificates = await Promise.all(
-            certList.map(async (c) => ({
-              ...c,
-              value: c.value?.startsWith('ENC:')
-                ? await decryptSecret(c.value, this.activeMasterKey!)
-                : c.value,
-            }))
-          );
-        } catch {
-          decCertificates = [];
-        }
+        decApiKeys = await decryptMultiList(rawApiKeys, 'key');
+        decTokens = await decryptMultiList(rawTokens, 'tok');
+        decSecretKeys = await decryptMultiList(rawSecretKeys, 'sec');
+        decLicenseKeys = await decryptMultiList(rawLicenseKeys, 'lic');
+        decCertificates = await decryptMultiList(rawCertificates, 'cert');
       }
 
-      items.push({
-        id: row[0] as string,
-        title: row[1] as string,
-        description: (row[2] as string) || '',
-        category: row[3] as string,
-        website: (row[4] as string) || '',
-        url: (row[5] as string) || '',
-        urls: parsedUrls,
-        username: (row[7] as string) || '',
-        email: (row[8] as string) || '',
-        password: decPassword,
-        apiKeys: decApiKeys,
-        tokens: decTokens,
-        secretKeys: decSecretKeys,
-        licenseKeys: decLicenseKeys,
-        certificates: decCertificates,
-        notes: (row[15] as string) || '',
-        secretNotes: decSecretNotes,
-        isFavorite: Boolean(row[17]),
-        createdAt: (row[18] as string) || new Date().toISOString(),
-        updatedAt: (row[19] as string) || new Date().toISOString(),
-      });
+      items.push(
+        normalizeVaultItem({
+          id: row[0],
+          title: row[1],
+          description: row[2],
+          category: row[3],
+          website: row[4],
+          url: row[5],
+          urls: parsedUrls,
+          username: row[7],
+          email: row[8],
+          password: decPassword,
+          apiKeys: decApiKeys,
+          tokens: decTokens,
+          secretKeys: decSecretKeys,
+          licenseKeys: decLicenseKeys,
+          certificates: decCertificates,
+          notes: row[15],
+          secretNotes: decSecretNotes,
+          isFavorite: Boolean(row[17]),
+          createdAt: row[18],
+          updatedAt: row[19],
+        })
+      );
     }
 
     return items;
@@ -701,7 +667,8 @@ export class VaultDatabase {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     `);
 
-    for (const item of items) {
+    for (const rawItem of items) {
+      const item = normalizeVaultItem(rawItem);
       let encPassword = item.password;
       let encSecretNotes = item.secretNotes || '';
 
@@ -714,79 +681,48 @@ export class VaultDatabase {
         }
       }
 
-      // Encrypt multi-values
-      const encApiKeys = this.activeMasterKey && Array.isArray(item.apiKeys)
-        ? await Promise.all(
-            item.apiKeys.map(async (k) => ({
-              ...k,
-              value: k.value && !k.value.startsWith('ENC:')
-                ? await encryptSecret(k.value, this.activeMasterKey!)
-                : k.value,
-            }))
-          )
-        : item.apiKeys || [];
+      const encryptMultiList = async (list: unknown, prefix: string): Promise<MultiEntry[]> => {
+        if (!Array.isArray(list)) return [];
+        return await Promise.all(
+          list.map(async (entry, idx) => {
+            const norm = normalizeMultiEntry(entry, `${prefix}_${idx}`);
+            const rawVal = norm.value;
+            const encVal =
+              this.activeMasterKey && rawVal && !rawVal.startsWith('ENC:')
+                ? await encryptSecret(rawVal, this.activeMasterKey!)
+                : rawVal;
+            return {
+              id: norm.id,
+              label: norm.label,
+              value: encVal,
+            };
+          })
+        );
+      };
 
-      const encTokens = this.activeMasterKey && Array.isArray(item.tokens)
-        ? await Promise.all(
-            item.tokens.map(async (t) => ({
-              ...t,
-              value: t.value && !t.value.startsWith('ENC:')
-                ? await encryptSecret(t.value, this.activeMasterKey!)
-                : t.value,
-            }))
-          )
-        : item.tokens || [];
-
-      const encSecretKeys = this.activeMasterKey && Array.isArray(item.secretKeys)
-        ? await Promise.all(
-            item.secretKeys.map(async (s) => ({
-              ...s,
-              value: s.value && !s.value.startsWith('ENC:')
-                ? await encryptSecret(s.value, this.activeMasterKey!)
-                : s.value,
-            }))
-          )
-        : item.secretKeys || [];
-
-      const encLicenses = this.activeMasterKey && Array.isArray(item.licenseKeys)
-        ? await Promise.all(
-            item.licenseKeys.map(async (l) => ({
-              ...l,
-              value: l.value && !l.value.startsWith('ENC:')
-                ? await encryptSecret(l.value, this.activeMasterKey!)
-                : l.value,
-            }))
-          )
-        : item.licenseKeys || [];
-
-      const encCerts = this.activeMasterKey && Array.isArray(item.certificates)
-        ? await Promise.all(
-            item.certificates.map(async (c) => ({
-              ...c,
-              value: c.value && !c.value.startsWith('ENC:')
-                ? await encryptSecret(c.value, this.activeMasterKey!)
-                : c.value,
-            }))
-          )
-        : item.certificates || [];
+      const encApiKeys = await encryptMultiList(item.apiKeys, 'key');
+      const encTokens = await encryptMultiList(item.tokens, 'tok');
+      const encSecretKeys = await encryptMultiList(item.secretKeys, 'sec');
+      const encLicenses = await encryptMultiList(item.licenseKeys, 'lic');
+      const encCerts = await encryptMultiList(item.certificates, 'cert');
 
       stmt.run([
-        item.id,
-        item.title,
-        item.description || '',
-        item.category,
-        item.website || '',
-        item.url || '',
+        safeString(item.id) || Date.now().toString(),
+        safeString(item.title),
+        safeString(item.description),
+        safeString(item.category) || 'web',
+        safeString(item.website),
+        safeString(item.url),
         JSON.stringify(item.urls || []),
-        item.username || '',
-        item.email || '',
+        safeString(item.username),
+        safeString(item.email),
         encPassword,
         JSON.stringify(encApiKeys),
         JSON.stringify(encTokens),
         JSON.stringify(encSecretKeys),
         JSON.stringify(encLicenses),
         JSON.stringify(encCerts),
-        item.notes || '',
+        safeString(item.notes),
         encSecretNotes,
         item.isFavorite ? 1 : 0,
         item.createdAt || new Date().toISOString(),

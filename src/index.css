@@ -102,3 +102,24 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+/* Tactile shake animation for error states */
+@keyframes shake-keypad {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+.animate-shake {
+  animation: shake-keypad 0.35s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes pop-led {
+  0% { transform: scale(0); opacity: 0; }
+  70% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-pop-led {
+  animation: pop-led 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}

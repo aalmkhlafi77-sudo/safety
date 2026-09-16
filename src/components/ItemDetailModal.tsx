@@ -24,6 +24,7 @@ import { VaultItem, Category, MultiEntry } from '../types';
 import { sounds } from '../utils/audio';
 import { copySensitiveText, copyPlainText } from '../utils/clipboard';
 import { sanitizeAndOpenUrl } from '../utils/url';
+import { safeString, safeArray } from '../utils/searchSafety';
 
 interface ItemDetailModalProps {
   item: VaultItem | null;
@@ -46,12 +47,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   onDuplicate,
   onCopiedToast,
 }) => {
-  if (!item) return null;
-
   const [showPassword, setShowPassword] = useState(false);
   const [showSecretNotes, setShowSecretNotes] = useState(false);
   const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  if (!item) return null;
 
   const toggleRevealKey = (id: string) => {
     setRevealedKeys((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -183,33 +184,38 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           )}
 
           {/* Additional URLs */}
-          {item.urls && item.urls.length > 0 && (
+          {safeArray<MultiEntry>(item.urls).length > 0 && (
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2">
               <div className="text-xs font-bold text-slate-300">روابط إضافية:</div>
-              {item.urls.map((u) => (
-                <div key={u.id} className="flex items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-slate-400 text-[11px] font-medium">{u.label}:</span>
-                    <span className="font-mono text-blue-300 truncate" dir="ltr">{u.value}</span>
+              {safeArray<MultiEntry>(item.urls).map((u, idx) => {
+                const uId = safeString(u?.id) || `url_${idx}`;
+                const uLabel = safeString(u?.label) || 'رابط';
+                const uVal = safeString(u?.value);
+                return (
+                  <div key={uId} className="flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-slate-400 text-[11px] font-medium">{uLabel}:</span>
+                      <span className="font-mono text-blue-300 truncate" dir="ltr">{uVal}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyNormal(uVal, uId)}
+                        className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
+                      >
+                        {copiedField === uId ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenUrl(uVal)}
+                        className="p-1 text-slate-400 hover:text-blue-400 cursor-pointer"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleCopyNormal(u.value, u.id)}
-                      className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
-                    >
-                      {copiedField === u.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenUrl(u.value)}
-                      className="p-1 text-slate-400 hover:text-blue-400 cursor-pointer"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -288,146 +294,171 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           )}
 
           {/* API Keys Multiple */}
-          {item.apiKeys && item.apiKeys.length > 0 && (
+          {safeArray<MultiEntry>(item.apiKeys).length > 0 && (
             <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
               <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                 <Key className="w-4 h-4" />
-                <span>مفاتيح الـ API ({item.apiKeys.length})</span>
+                <span>مفاتيح الـ API ({safeArray<MultiEntry>(item.apiKeys).length})</span>
               </div>
-              {item.apiKeys.map((keyEntry) => (
-                <div key={keyEntry.id} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                  <div className="flex items-center justify-between text-slate-400 mb-1">
-                    <span className="font-bold text-slate-300">{keyEntry.label || 'API Key'}</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleRevealKey(keyEntry.id)}
-                        className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
-                      >
-                        {revealedKeys[keyEntry.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleCopySensitive(keyEntry.value, keyEntry.id)}
-                        className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
-                      >
-                        {copiedField === keyEntry.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
+              {safeArray<MultiEntry>(item.apiKeys).map((keyEntry, idx) => {
+                const kId = safeString(keyEntry?.id) || `key_${idx}`;
+                const kLabel = safeString(keyEntry?.label) || 'API Key';
+                const kVal = safeString(keyEntry?.value);
+                return (
+                  <div key={kId} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                    <div className="flex items-center justify-between text-slate-400 mb-1">
+                      <span className="font-bold text-slate-300">{kLabel}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleRevealKey(kId)}
+                          className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
+                        >
+                          {revealedKeys[kId] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopySensitive(kVal, kId)}
+                          className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
+                        >
+                          {copiedField === kId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="font-mono text-xs text-amber-200/90 break-all select-all">
+                      {revealedKeys[kId] ? kVal : '••••••••••••••••••••••••••••••••'}
                     </div>
                   </div>
-                  <div className="font-mono text-xs text-amber-200/90 break-all select-all">
-                    {revealedKeys[keyEntry.id] ? keyEntry.value : '••••••••••••••••••••••••••••••••'}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
           {/* Tokens & Secret Keys */}
-          {((item.tokens && item.tokens.length > 0) || (item.secretKeys && item.secretKeys.length > 0)) && (
+          {(safeArray<MultiEntry>(item.tokens).length > 0 || safeArray<MultiEntry>(item.secretKeys).length > 0) && (
             <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
               <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
                 <Shield className="w-4 h-4" />
                 <span>التوكنات والمفاتيح السرية</span>
               </div>
-              {item.tokens?.map((t) => (
-                <div key={t.id} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                  <div className="flex items-center justify-between text-slate-400 mb-1">
-                    <span className="font-bold text-cyan-300">{t.label || 'Token'}</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleRevealKey(t.id)}
-                        className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
-                      >
-                        {revealedKeys[t.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleCopySensitive(t.value, t.id)}
-                        className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
-                      >
-                        {copiedField === t.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
+              {safeArray<MultiEntry>(item.tokens).map((t, idx) => {
+                const tId = safeString(t?.id) || `tok_${idx}`;
+                const tLabel = safeString(t?.label) || 'Token';
+                const tVal = safeString(t?.value);
+                return (
+                  <div key={tId} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                    <div className="flex items-center justify-between text-slate-400 mb-1">
+                      <span className="font-bold text-cyan-300">{tLabel}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleRevealKey(tId)}
+                          className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
+                        >
+                          {revealedKeys[tId] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopySensitive(tVal, tId)}
+                          className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
+                        >
+                          {copiedField === tId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="font-mono text-xs text-cyan-200 break-all select-all">
+                      {revealedKeys[tId] ? tVal : '••••••••••••••••••••••••••••••••'}
                     </div>
                   </div>
-                  <div className="font-mono text-xs text-cyan-200 break-all select-all">
-                    {revealedKeys[t.id] ? t.value : '••••••••••••••••••••••••••••••••'}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
-              {item.secretKeys?.map((s) => (
-                <div key={s.id} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                  <div className="flex items-center justify-between text-slate-400 mb-1">
-                    <span className="font-bold text-rose-300">{s.label || 'Secret Key'}</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleRevealKey(s.id)}
-                        className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
-                      >
-                        {revealedKeys[s.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleCopySensitive(s.value, s.id)}
-                        className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
-                      >
-                        {copiedField === s.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
+              {safeArray<MultiEntry>(item.secretKeys).map((s, idx) => {
+                const sId = safeString(s?.id) || `sec_${idx}`;
+                const sLabel = safeString(s?.label) || 'Secret Key';
+                const sVal = safeString(s?.value);
+                return (
+                  <div key={sId} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                    <div className="flex items-center justify-between text-slate-400 mb-1">
+                      <span className="font-bold text-rose-300">{sLabel}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleRevealKey(sId)}
+                          className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
+                        >
+                          {revealedKeys[sId] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopySensitive(sVal, sId)}
+                          className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
+                        >
+                          {copiedField === sId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="font-mono text-xs text-rose-200 break-all select-all">
+                      {revealedKeys[sId] ? sVal : '••••••••••••••••••••••••••••••••'}
                     </div>
                   </div>
-                  <div className="font-mono text-xs text-rose-200 break-all select-all">
-                    {revealedKeys[s.id] ? s.value : '••••••••••••••••••••••••••••••••'}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
           {/* License Keys & Certificates */}
-          {((item.licenseKeys && item.licenseKeys.length > 0) || (item.certificates && item.certificates.length > 0)) && (
+          {(safeArray<MultiEntry>(item.licenseKeys).length > 0 || safeArray<MultiEntry>(item.certificates).length > 0) && (
             <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
               <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
                 <Award className="w-4 h-4" />
                 <span>أرقام التراخيص والشهادات</span>
               </div>
-              {item.licenseKeys?.map((l) => (
-                <div key={l.id} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                  <div className="flex items-center justify-between text-slate-400 mb-1">
-                    <span className="font-bold text-emerald-300">{l.label || 'License'}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyNormal(l.value, l.id)}
-                      className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
-                    >
-                      {copiedField === l.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
+              {safeArray<MultiEntry>(item.licenseKeys).map((l, idx) => {
+                const lId = safeString(l?.id) || `lic_${idx}`;
+                const lLabel = safeString(l?.label) || 'License';
+                const lVal = safeString(l?.value);
+                return (
+                  <div key={lId} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                    <div className="flex items-center justify-between text-slate-400 mb-1">
+                      <span className="font-bold text-emerald-300">{lLabel}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyNormal(lVal, lId)}
+                        className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
+                      >
+                        {copiedField === lId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <div className="font-mono text-xs text-emerald-200 break-all select-all">
+                      {lVal}
+                    </div>
                   </div>
-                  <div className="font-mono text-xs text-emerald-200 break-all select-all">
-                    {l.value}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
-              {item.certificates?.map((c) => (
-                <div key={c.id} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                  <div className="flex items-center justify-between text-slate-400 mb-1">
-                    <span className="font-bold text-teal-300">{c.label || 'Certificate'}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyNormal(c.value, c.id)}
-                      className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
-                    >
-                      {copiedField === c.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
+              {safeArray<MultiEntry>(item.certificates).map((c, idx) => {
+                const cId = safeString(c?.id) || `cert_${idx}`;
+                const cLabel = safeString(c?.label) || 'Certificate';
+                const cVal = safeString(c?.value);
+                return (
+                  <div key={cId} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                    <div className="flex items-center justify-between text-slate-400 mb-1">
+                      <span className="font-bold text-teal-300">{cLabel}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyNormal(cVal, cId)}
+                        className="p-1 text-slate-400 hover:text-amber-400 cursor-pointer"
+                      >
+                        {copiedField === cId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <div className="font-mono text-xs text-teal-200 break-all select-all">
+                      {cVal}
+                    </div>
                   </div>
-                  <div className="font-mono text-xs text-teal-200 break-all select-all">
-                    {c.value}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
