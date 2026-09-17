@@ -39,11 +39,11 @@ export const ItemListView: React.FC<ItemListViewProps> = ({
   const getCategory = (catId?: string) =>
     catId ? safeCategories.find((c) => c && c.id === catId) : undefined;
 
-  const handleOpenUrl = (url?: string, e?: React.MouseEvent) => {
+  const handleOpenUrl = async (url?: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (!url) return;
     sounds.playKeypadClick();
-    sanitizeAndOpenUrl(url);
+    await sanitizeAndOpenUrl(url);
   };
 
   return (

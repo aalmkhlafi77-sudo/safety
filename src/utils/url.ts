@@ -1,3 +1,6 @@
+import { isTauri } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
+
 // Safe URL opener for external browser window with strict protocol filtering
 
 export function isSafeUrlProtocol(rawUrl: string): boolean {
@@ -21,34 +24,68 @@ export function isSafeUrlProtocol(rawUrl: string): boolean {
   }
 }
 
-export function sanitizeAndOpenUrl(rawUrl: string): boolean {
-  if (!isSafeUrlProtocol(rawUrl)) {
-    console.warn('Blocked dangerous or invalid URL:', rawUrl);
-    return false;
-  }
-
+export function normalizeUrl(rawUrl: string): string | null {
+  if (!isSafeUrlProtocol(rawUrl)) return null;
   let normalized = rawUrl.trim();
   if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
     normalized = `https://${normalized}`;
   }
-
   try {
     const parsed = new URL(normalized);
-
-    // Check if running in Tauri 2 desktop window with opener capability
-    if (typeof window !== 'undefined') {
-      const tauriWindow = (window as any).__TAURI__;
-      if (tauriWindow?.opener?.openUrl) {
-        tauriWindow.opener.openUrl(parsed.href);
-        return true;
-      }
-      // Fallback for browser / standard window
-      window.open(parsed.href, '_blank', 'noopener,noreferrer');
-      return true;
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.href;
     }
-    return true;
-  } catch (err) {
-    console.warn('Invalid URL structure');
-    return false;
+    return null;
+  } catch {
+    return null;
   }
 }
+
+export async function sanitizeAndOpenUrl(rawUrl: string): Promise<boolean> {
+  const normalizedHref = normalizeUrl(rawUrl);
+  if (!normalizedHref) {
+    console.warn('Blocked dangerous or invalid URL:', typeof rawUrl === 'string' ? rawUrl.slice(0, 30) : rawUrl);
+    return false;
+  }
+
+  // 1. Check if running in Tauri desktop environment
+  let inTauri = false;
+  try {
+    inTauri = isTauri();
+  } catch {
+    inTauri = false;
+  }
+
+  if (inTauri) {
+    try {
+      await openUrl(normalizedHref);
+      return true;
+    } catch (tauriError) {
+      console.error('Failed to open URL using Tauri opener plugin:', tauriError);
+      // Optional fallback in case desktop opener encounters issue
+      if (typeof window !== 'undefined') {
+        try {
+          window.open(normalizedHref, '_blank', 'noopener,noreferrer');
+          return true;
+        } catch (fallbackError) {
+          console.error('Fallback window.open also failed:', fallbackError);
+        }
+      }
+      return false;
+    }
+  }
+
+  // 2. Standard Browser / Google AI Studio Preview environment path
+  if (typeof window !== 'undefined') {
+    try {
+      window.open(normalizedHref, '_blank', 'noopener,noreferrer');
+      return true;
+    } catch (browserError) {
+      console.error('Failed to open URL in browser preview:', browserError);
+      return false;
+    }
+  }
+
+  return false;
+}
+

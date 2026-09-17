@@ -16,7 +16,7 @@ import {
   normalizeMultiEntry,
 } from '../src/utils/searchSafety';
 
-import { isSafeUrlProtocol, sanitizeAndOpenUrl } from '../src/utils/url';
+import { isSafeUrlProtocol, normalizeUrl, sanitizeAndOpenUrl } from '../src/utils/url';
 import { VaultItem, Category, MultiEntry } from '../src/types';
 
 let passed = 0;
@@ -162,19 +162,77 @@ async function runSuite() {
   assert(normalizedEntry.id === 'fallback_id' && normalizedEntry.label === '777' && normalizedEntry.value === '', 'MultiEntry normalized safely');
 
   // ----------------------------------------------------
-  // TEST 3: URL PROTOCOL VALIDATION & XSS DEFENSE
+  // TEST 3: URL PROTOCOL VALIDATION & OPENER VERIFICATION
   // ----------------------------------------------------
-  console.log('\n--- 3. URL Sanitization & Protocol Validation Tests ---');
+  console.log('\n--- 3. URL Sanitization, Normalization & Opener Tests ---');
 
+  // 1. Protocol validity
   assert(isSafeUrlProtocol('https://github.com/almakhlafi'), 'Valid https:// accepted');
   assert(isSafeUrlProtocol('http://localhost:3000'), 'Valid http:// accepted');
+
+  // 2. Protocol normalization for raw domain strings
+  const norm1 = normalizeUrl('github.com/almakhlafi');
+  assert(norm1 === 'https://github.com/almakhlafi', 'URL without protocol normalized to https://');
+  const norm2 = normalizeUrl('academy.hsoub.com');
+  assert(norm2 === 'https://academy.hsoub.com/' || norm2 === 'https://academy.hsoub.com', 'Subdomain without protocol normalized to https://');
+
+  // 3. Dangerous protocol defense
   assert(!isSafeUrlProtocol('javascript:alert(1)'), 'Dangerous javascript: BLOCKED');
   assert(!isSafeUrlProtocol('vbscript:msgbox(1)'), 'Dangerous vbscript: BLOCKED');
   assert(!isSafeUrlProtocol('data:text/html,<script>alert(1)</script>'), 'Dangerous data: BLOCKED');
   assert(!isSafeUrlProtocol('file:///C:/Windows/System32/calc.exe'), 'Dangerous file: BLOCKED');
+  assert(!isSafeUrlProtocol('blob:https://example.com/uuid'), 'Dangerous blob: BLOCKED');
+  assert(!isSafeUrlProtocol('about:blank'), 'Dangerous about: BLOCKED');
+
+  // 4. Edge cases & null safety
   assert(!isSafeUrlProtocol(''), 'Empty URL rejected');
   assert(!isSafeUrlProtocol(null as any), 'Null URL safely rejected without throw');
   assert(!isSafeUrlProtocol(undefined as any), 'Undefined URL safely rejected without throw');
+  assert(normalizeUrl('') === null, 'Empty string normalizeUrl returns null');
+  assert(normalizeUrl('javascript:void(0)') === null, 'Dangerous scheme normalizeUrl returns null');
+
+  // 5. Opener implementation code verification
+  const fsModule = await import('fs');
+  const urlTsContent = fsModule.readFileSync('src/utils/url.ts', 'utf8');
+  assert(
+    urlTsContent.includes('@tauri-apps/plugin-opener') && urlTsContent.includes('openUrl'),
+    'Tauri official opener uses @tauri-apps/plugin-opener'
+  );
+  assert(
+    urlTsContent.includes('@tauri-apps/api/core') && urlTsContent.includes('isTauri'),
+    'Environment detection uses official isTauri() from @tauri-apps/api/core'
+  );
+  assert(
+    !urlTsContent.includes('window.__TAURI__.opener.openUrl') && !urlTsContent.includes('tauriWindow.opener'),
+    'No functional reliance on window.__TAURI__.opener.openUrl'
+  );
+  assert(
+    urlTsContent.includes("window.open(normalizedHref, '_blank', 'noopener,noreferrer')"),
+    'Browser fallback path (window.open) is fully preserved for preview'
+  );
+
+  // 6. sanitizeAndOpenUrl behavior test in browser simulation
+  let mockOpenedUrl = '';
+  const originalWindow = (globalThis as any).window;
+  (globalThis as any).window = {
+    open: (target: string) => {
+      mockOpenedUrl = target;
+      return null;
+    },
+  };
+
+  const openSuccess = await sanitizeAndOpenUrl('github.com/almakhlafi');
+  assert(openSuccess === true && mockOpenedUrl === 'https://github.com/almakhlafi', 'Browser path successfully opened normalized URL');
+
+  const openBlocked = await sanitizeAndOpenUrl('javascript:alert(1)');
+  assert(openBlocked === false, 'Dangerous URL blocked by sanitizeAndOpenUrl without execution');
+
+  // Restore window
+  if (originalWindow !== undefined) {
+    (globalThis as any).window = originalWindow;
+  } else {
+    delete (globalThis as any).window;
+  }
 
   // ----------------------------------------------------
   // TEST 4: SORTING & COMPARISON STABILITY

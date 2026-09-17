@@ -99,11 +99,11 @@ export const ItemCompactCard: React.FC<ItemCompactCardProps> = ({
     }, 1800);
   };
 
-  const handleOpenUrl = (e: React.MouseEvent) => {
+  const handleOpenUrl = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!item.url) return;
     sounds.playKeypadClick();
-    sanitizeAndOpenUrl(item.url);
+    await sanitizeAndOpenUrl(item.url);
   };
 
   return (

@@ -96,10 +96,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     }, 1800);
   };
 
-  const handleOpenUrl = (targetUrl?: string) => {
+  const handleOpenUrl = async (targetUrl?: string) => {
     if (!targetUrl) return;
     sounds.playKeypadClick();
-    sanitizeAndOpenUrl(targetUrl);
+    await sanitizeAndOpenUrl(targetUrl);
   };
 
   return (
