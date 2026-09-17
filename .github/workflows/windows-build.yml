@@ -80,7 +80,7 @@ jobs:
       - name: Upload Windows build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: AMAN-Windows-v2.0.0
+          name: AMAN-Windows-v2.0.1
           if-no-files-found: error
           retention-days: 14
           path: |

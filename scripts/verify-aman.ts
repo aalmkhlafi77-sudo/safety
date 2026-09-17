@@ -255,7 +255,7 @@ async function runSuite() {
   
   const fs = await import('fs');
   const tauriConf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-  assert(tauriConf.version === '2.0.0', 'Tauri product version is 2.0.0');
+  assert(tauriConf.version === '2.0.1', 'Tauri product version is 2.0.1');
   assert(tauriConf.productName === 'AMAN', 'Tauri product name is AMAN');
   assert(tauriConf.app?.windows?.[0]?.label === 'main', "Tauri main window labeled 'main'");
   assert(tauriConf.bundle?.windows?.nsis?.installMode === 'currentUser', 'NSIS installer configured for currentUser');

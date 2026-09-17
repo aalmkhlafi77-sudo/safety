@@ -1,6 +1,6 @@
 [package]
 name = "aman-vault"
-version = "2.0.0"
+version = "2.0.1"
 description = "AMAN - Secure Local Desktop Vault for Windows"
 authors = ["Abdullah Al-Makhlafi"]
 edition = "2021"
